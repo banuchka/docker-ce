@@ -184,7 +184,6 @@ if [ $1 -gt 0 ] ; then
     if systemctl is-active docker > /dev/null 2>&1; then
         systemctl stop docker > /dev/null 2>&1 || :
         touch %{_localstatedir}/lib/rpm-state/docker-is-active > /dev/null 2>&1 || :
-	echo $1 > %{_localstatedir}/lib/rpm-state/docker-is-active > /dev/null 2>&1 || :
     fi
 fi
 
@@ -202,8 +201,7 @@ fi
 %systemd_postun_with_restart docker
 
 %posttrans
-if [ -f %{_localstatedir}/lib/rpm-state/docker-is-active ]; then
-if [ $(cat %{_localstatedir}/lib/rpm-state/docker-is-active) -ge 0 ] ; then
+if [ -f /usr/bin/docker ] ; then
     # package upgrade scenario, after new files are installed
 
     # check if docker was running before upgrade
@@ -211,7 +209,6 @@ if [ $(cat %{_localstatedir}/lib/rpm-state/docker-is-active) -ge 0 ] ; then
         systemctl start docker > /dev/null 2>&1 || :
         rm -f %{_localstatedir}/lib/rpm-state/docker-is-active > /dev/null 2>&1 || :
     fi
-fi
 fi
 
 %changelog
