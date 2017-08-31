@@ -65,9 +65,9 @@ sles-12: rpmbuild/SOURCES/engine.tgz rpmbuild/SOURCES/cli.tgz ## build sles-12 r
 	$(CHOWN) -R $(shell id -u):$(shell id -g) rpmbuild
 
 sles-12.2: rpmbuild/SOURCES/engine.tgz rpmbuild/SOURCES/cli.tgz ## build sles-12.2 rpm packages
-        docker build -t rpmbuild-$@/$(ARCH) -f $@/Dockerfile.$(ARCH) $@
-        $(RPMBUILD) rpmbuild-$@/$(ARCH) $(RPMBUILD_FLAGS)
-        $(CHOWN) -R $(shell id -u):$(shell id -g) rpmbuild
+	docker build -t rpmbuild-$@/$(ARCH) -f $@/Dockerfile.$(ARCH) $@
+	$(RPMBUILD) rpmbuild-$@/$(ARCH) $(RPMBUILD_FLAGS)
+	$(CHOWN) -R $(shell id -u):$(shell id -g) rpmbuild
 
 rpmbuild/SOURCES/cli.tgz:
 	mkdir -p rpmbuild/SOURCES
