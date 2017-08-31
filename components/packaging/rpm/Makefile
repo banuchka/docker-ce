@@ -37,7 +37,7 @@ fedora: fedora-26 fedora-25 fedora-24 ## build all fedora rpm packages
 
 centos: centos-7 ## build all centos rpm packages
 
-sles: sles-12 ## build all sles-12 rpm packages
+sles: sles-12 sles-12.2 ## build all sles-12 rpm packages
 
 fedora-26: rpmbuild/SOURCES/engine.tgz rpmbuild/SOURCES/cli.tgz ## build fedora-26 rpm packages
 	docker build -t rpmbuild-$@/$(ARCH) -f $@/Dockerfile.$(ARCH) $@
@@ -63,6 +63,11 @@ sles-12: rpmbuild/SOURCES/engine.tgz rpmbuild/SOURCES/cli.tgz ## build sles-12 r
 	docker build -t rpmbuild-$@/$(ARCH) -f $@/Dockerfile.$(ARCH) $@
 	$(RPMBUILD) rpmbuild-$@/$(ARCH) $(RPMBUILD_FLAGS)
 	$(CHOWN) -R $(shell id -u):$(shell id -g) rpmbuild
+
+sles-12.2: rpmbuild/SOURCES/engine.tgz rpmbuild/SOURCES/cli.tgz ## build sles-12.2 rpm packages
+        docker build -t rpmbuild-$@/$(ARCH) -f $@/Dockerfile.$(ARCH) $@
+        $(RPMBUILD) rpmbuild-$@/$(ARCH) $(RPMBUILD_FLAGS)
+        $(CHOWN) -R $(shell id -u):$(shell id -g) rpmbuild
 
 rpmbuild/SOURCES/cli.tgz:
 	mkdir -p rpmbuild/SOURCES
