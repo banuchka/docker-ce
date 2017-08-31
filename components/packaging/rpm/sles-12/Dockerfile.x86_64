@@ -1,0 +1,21 @@
+FROM dockerio.badoo.com/itops/sle_12_sp2_base:latest
+RUN zypper -n -q in -t pattern "Basis-Devel"
+RUN zypper -n -q in tar curl rpmbuild systemd-devel libtool git libseccomp-devel cmake glibc-devel-static device-mapper-devel libbtrfs-devel
+
+RUN mkdir -p /root/rpmbuild/{BUILD,RPMS,SOURCES,SPECS,SRPMS}
+RUN echo '%_topdir /root/rpmbuild' > /root/.rpmmacros
+
+ENV GO_VERSION 1.8.3
+ENV DISTRO sles
+ENV SUITE 12
+RUN curl -fSL "https://golang.org/dl/go${GO_VERSION}.linux-amd64.tar.gz" | tar xzC /usr/local
+RUN mkdir -p /go
+ENV GOPATH=/go
+ENV PATH $PATH:/usr/local/go/bin:/go/bin
+ENV AUTO_GOPATH 1
+ENV DOCKER_BUILDTAGS pkcs11 seccomp selinux
+ENV RUNC_BUILDTAGS seccomp selinux
+RUN mkdir -p /go/src/github.com/docker && mkdir -p /go/src/github.com/opencontainers
+COPY docker-ce.spec /root/rpmbuild/SPECS/docker-ce.spec
+WORKDIR /root/rpmbuild
+ENTRYPOINT ["/usr/bin/rpmbuild"]
