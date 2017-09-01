@@ -201,7 +201,7 @@ fi
 %systemd_postun_with_restart docker
 
 %posttrans
-if [ $1 -ge 0 ] ; then
+if [ -f /usr/bin/docker ] ; then
     # package upgrade scenario, after new files are installed
 
     # check if docker was running before upgrade
