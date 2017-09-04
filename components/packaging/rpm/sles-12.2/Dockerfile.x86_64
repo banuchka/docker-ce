@@ -1,5 +1,4 @@
 FROM dockerio.badoo.com/itops/sle_12_sp2_base:latest
-RUN zypper ar --no-gpgcheck "http://obs.mlan/Security/SLE_12_SP2/" Security 
 RUN zypper -n -q in -t pattern "Basis-Devel"
 RUN zypper -n -q in tar curl rpmbuild systemd-devel libtool git libseccomp-devel cmake glibc-devel-static device-mapper-devel libbtrfs-devel
 
