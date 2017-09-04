@@ -194,8 +194,8 @@ if ! getent group docker > /dev/null; then
 fi
 %service_add_post docker.service
 
-#%preun
-#%systemd_preun docker
+%preun
+%systemd_preun docker
 
 %postun
 %systemd_postun_with_restart docker
