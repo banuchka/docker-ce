@@ -197,8 +197,8 @@ fi
 #%preun
 #%systemd_preun docker
 
-%postun
-%systemd_postun_with_restart docker
+#%postun
+#%systemd_postun_with_restart docker
 
 %posttrans
 if [ -f /usr/bin/docker ] ; then
