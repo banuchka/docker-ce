@@ -188,11 +188,11 @@ if [ -f /usr/bin/docker ] ; then
 fi
 
 %post
-%systemd_post docker
+#%systemd_post docker
 if ! getent group docker > /dev/null; then
     groupadd --system docker
 fi
-%service_add_post docker.service
+#%service_add_post docker.service
 
 #%preun
 #%systemd_preun docker
