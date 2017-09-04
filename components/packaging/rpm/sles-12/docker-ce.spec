@@ -174,7 +174,7 @@ done
 /usr/share/nano/Dockerfile.nanorc
 
 %pre
-if [ -f /usr/bin/docker ] ; then
+if [ $1 -gt 0 ] ; then
     # package upgrade scenario, before new files are installed
 
     # clear any old state
@@ -194,8 +194,8 @@ if ! getent group docker > /dev/null; then
 fi
 %service_add_post docker.service
 
-%preun
-%systemd_preun docker
+#%preun
+#%systemd_preun docker
 
 %postun
 %systemd_postun_with_restart docker
