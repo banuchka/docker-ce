@@ -174,7 +174,7 @@ done
 /usr/share/nano/Dockerfile.nanorc
 
 %pre
-if [ $1 -gt 0 ] ; then
+if [ -f /usr/bin/docker ] ; then
     # package upgrade scenario, before new files are installed
 
     # clear any old state
