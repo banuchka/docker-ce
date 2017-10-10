@@ -14,6 +14,9 @@ clean: ## remove build artifacts
 test-unit: ## run unit test
 	./scripts/test/unit $(shell go list ./... | grep -vE '/vendor/|/e2e/')
 
+.PHONY: test
+test: test-unit ## run tests
+
 .PHONY: test-coverage
 test-coverage: ## run test coverage
 	./scripts/test/unit-with-coverage $(shell go list ./... | grep -vE '/vendor/|/e2e/')
@@ -30,6 +33,14 @@ binary: ## build executable for Linux
 .PHONY: cross
 cross: ## build executable for macOS and Windows
 	./scripts/build/cross
+
+.PHONY: binary-windows
+binary-windows: ## build executable for Windows
+	./scripts/build/windows
+
+.PHONY: binary-osx
+binary-osx: ## build executable for macOS
+	./scripts/build/osx
 
 .PHONY: dynbinary
 dynbinary: ## build dynamically linked binary

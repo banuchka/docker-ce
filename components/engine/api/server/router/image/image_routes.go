@@ -66,9 +66,7 @@ func (s *imageRouter) postCommit(ctx context.Context, w http.ResponseWriter, r *
 		return err
 	}
 
-	return httputils.WriteJSON(w, http.StatusCreated, &types.IDResponse{
-		ID: string(imgID),
-	})
+	return httputils.WriteJSON(w, http.StatusCreated, &types.IDResponse{ID: imgID})
 }
 
 // Creates an image from Pull or from Import
@@ -304,7 +302,7 @@ func (s *imageRouter) getImagesJSON(ctx context.Context, w http.ResponseWriter, 
 		return err
 	}
 
-	imageFilters, err := filters.FromParam(r.Form.Get("filters"))
+	imageFilters, err := filters.FromJSON(r.Form.Get("filters"))
 	if err != nil {
 		return err
 	}
@@ -387,7 +385,7 @@ func (s *imageRouter) postImagesPrune(ctx context.Context, w http.ResponseWriter
 		return err
 	}
 
-	pruneFilters, err := filters.FromParam(r.Form.Get("filters"))
+	pruneFilters, err := filters.FromJSON(r.Form.Get("filters"))
 	if err != nil {
 		return err
 	}
