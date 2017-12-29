@@ -12,7 +12,7 @@ fi
 
 GIT_COMMAND="git -C $ENGINE_DIR"
 rpmName=docker-ce
-rpmVersion="$VERSION"
+rpmVersion=17.12.0-ce
 rpmRelease=1
 
 # rpmRelease versioning is as follows
