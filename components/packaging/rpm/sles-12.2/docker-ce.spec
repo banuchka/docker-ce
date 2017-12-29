@@ -80,7 +80,7 @@ popd
 
 %check
 cli/build/docker -v
-engine/bundles/%{_origversion}/dynbinary-daemon/dockerd -v
+engine/bundles/dynbinary-daemon/dockerd -v
 
 %install
 # install binary
