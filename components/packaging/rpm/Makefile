@@ -21,7 +21,7 @@ RPMBUILD_FLAGS=-ba\
 	--define '_experimental $(DOCKER_EXPERIMENTAL)' \
 	SPECS/docker-ce.spec
 
-.PHONY: help clean rpm fedora centos fedora-27 fedora-26 fedora-25 centos-7
+.PHONY: help clean rpm fedora centos fedora-27 fedora-26 fedora-25 centos-7 sles sles-12 sles-12.2
 
 help: ## show make targets
 	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / {sub("\\\\n",sprintf("\n%22c"," "), $$2);printf " \033[36m%-20s\033[0m  %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -35,6 +35,8 @@ rpm: fedora centos ## build all rpm packages
 fedora: fedora-27 fedora-26 fedora-25 ## build all fedora rpm packages
 
 centos: centos-7 ## build all centos rpm packages
+
+sles: sles-12 sles-12.2 ## build all sles rpm packages
 
 fedora-27: rpmbuild/SOURCES/engine.tgz rpmbuild/SOURCES/cli.tgz ## build fedora-27 rpm packages
 	docker build -t rpmbuild-$@/$(ARCH) -f $@/Dockerfile.$(ARCH) $@
@@ -52,6 +54,16 @@ fedora-25: rpmbuild/SOURCES/engine.tgz rpmbuild/SOURCES/cli.tgz ## build fedora-
 	$(CHOWN) -R $(shell id -u):$(shell id -g) rpmbuild
 
 centos-7: rpmbuild/SOURCES/engine.tgz rpmbuild/SOURCES/cli.tgz ## build centos-7 rpm packages
+	docker build -t rpmbuild-$@/$(ARCH) -f $@/Dockerfile.$(ARCH) $@
+	$(RPMBUILD) rpmbuild-$@/$(ARCH) $(RPMBUILD_FLAGS)
+	$(CHOWN) -R $(shell id -u):$(shell id -g) rpmbuild
+
+sles-12: rpmbuild/SOURCES/engine.tgz rpmbuild/SOURCES/cli.tgz ## build sles-12 rpm packages
+	docker build -t rpmbuild-$@/$(ARCH) -f $@/Dockerfile.$(ARCH) $@
+	$(RPMBUILD) rpmbuild-$@/$(ARCH) $(RPMBUILD_FLAGS)
+	$(CHOWN) -R $(shell id -u):$(shell id -g) rpmbuild
+
+sles-12.2: rpmbuild/SOURCES/engine.tgz rpmbuild/SOURCES/cli.tgz ## build sles-12.2 rpm packages
 	docker build -t rpmbuild-$@/$(ARCH) -f $@/Dockerfile.$(ARCH) $@
 	$(RPMBUILD) rpmbuild-$@/$(ARCH) $(RPMBUILD_FLAGS)
 	$(CHOWN) -R $(shell id -u):$(shell id -g) rpmbuild
