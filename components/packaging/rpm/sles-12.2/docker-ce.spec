@@ -86,7 +86,8 @@ engine/bundles/%{_origversion}/dynbinary-daemon/dockerd -v
 # install binary
 install -d $RPM_BUILD_ROOT/%{_bindir}
 install -p -m 755 cli/build/docker $RPM_BUILD_ROOT/%{_bindir}/docker
-install -p -m 755 engine/bundles/%{_origversion}/dynbinary-daemon/dockerd-%{_origversion} $RPM_BUILD_ROOT/%{_bindir}/dockerd
+install -p -m 755 $(readlink -f engine/bundles/dynbinary-daemon/dockerd) $RPM_BUILD_ROOT/%{_bindir}/dockerd
+#install -p -m 755 engine/bundles/%{_origversion}/dynbinary-daemon/dockerd-%{_origversion} $RPM_BUILD_ROOT/%{_bindir}/dockerd
 
 # install proxy
 install -p -m 755 /usr/local/bin/docker-proxy $RPM_BUILD_ROOT/%{_bindir}/docker-proxy
