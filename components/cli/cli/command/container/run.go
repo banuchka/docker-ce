@@ -29,10 +29,11 @@ type runOptions struct {
 	sigProxy   bool
 	name       string
 	detachKeys string
+	platform   string
 }
 
 // NewRunCommand create a new `docker run` command
-func NewRunCommand(dockerCli *command.DockerCli) *cobra.Command {
+func NewRunCommand(dockerCli command.Cli) *cobra.Command {
 	var opts runOptions
 	var copts *containerOptions
 
@@ -62,6 +63,7 @@ func NewRunCommand(dockerCli *command.DockerCli) *cobra.Command {
 	// with hostname
 	flags.Bool("help", false, "Print usage")
 
+	command.AddPlatformFlag(flags, &opts.platform)
 	command.AddTrustVerificationFlags(flags)
 	copts = addFlags(flags)
 	return cmd
@@ -96,7 +98,7 @@ func isLocalhost(ip string) bool {
 	return localhostIPRegexp.MatchString(ip)
 }
 
-func runRun(dockerCli *command.DockerCli, flags *pflag.FlagSet, ropts *runOptions, copts *containerOptions) error {
+func runRun(dockerCli command.Cli, flags *pflag.FlagSet, ropts *runOptions, copts *containerOptions) error {
 	proxyConfig := dockerCli.ConfigFile().ParseProxyConfig(dockerCli.Client().DaemonHost(), copts.env.GetAll())
 	newEnv := []string{}
 	for k, v := range proxyConfig {
@@ -117,7 +119,7 @@ func runRun(dockerCli *command.DockerCli, flags *pflag.FlagSet, ropts *runOption
 }
 
 // nolint: gocyclo
-func runContainer(dockerCli *command.DockerCli, opts *runOptions, copts *containerOptions, containerConfig *containerConfig) error {
+func runContainer(dockerCli command.Cli, opts *runOptions, copts *containerOptions, containerConfig *containerConfig) error {
 	config := containerConfig.Config
 	hostConfig := containerConfig.HostConfig
 	stdout, stderr := dockerCli.Out(), dockerCli.Err()
@@ -160,7 +162,7 @@ func runContainer(dockerCli *command.DockerCli, opts *runOptions, copts *contain
 
 	ctx, cancelFun := context.WithCancel(context.Background())
 
-	createResponse, err := createContainer(ctx, dockerCli, containerConfig, opts.name)
+	createResponse, err := createContainer(ctx, dockerCli, containerConfig, opts.name, opts.platform)
 	if err != nil {
 		reportError(stderr, cmdPath, err.Error(), true)
 		return runStartContainerErr(err)
@@ -290,8 +292,11 @@ func attachContainer(
 		return nil, errAttach
 	}
 
+	ch := make(chan error, 1)
+	*errCh = ch
+
 	go func() {
-		*errCh <- func() error {
+		ch <- func() error {
 			streamer := hijackedIOStreamer{
 				streams:      dockerCli,
 				inputStream:  in,

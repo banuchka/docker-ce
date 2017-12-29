@@ -103,7 +103,7 @@
 	[people.cpuguy83]
 	Name = "Brian Goff"
 	Email = "cpuguy83@gmail.com"
-	Github = "cpuguy83"
+	GitHub = "cpuguy83"
 
 	[people.crosbymichael]
 	Name = "Michael Crosby"
@@ -133,7 +133,7 @@
 	[people.misty]
 	Name = "Misty Stanley-Jones"
 	Email = "misty@docker.com"
-	GitHub = "mstanleyjones"
+	GitHub = "mistyhacks"
 
 	[people.mlaventure]
 	Name = "Kenfe-Mickaël Laventure"

@@ -1,6 +1,7 @@
 package loader
 
 import (
+	"bytes"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -9,6 +10,7 @@ import (
 	"time"
 
 	"github.com/docker/cli/cli/compose/types"
+	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -465,7 +467,7 @@ services:
 	assert.Contains(t, err.Error(), "services.dict-env.environment must be a mapping")
 }
 
-func TestEnvironmentInterpolation(t *testing.T) {
+func TestLoadWithEnvironmentInterpolation(t *testing.T) {
 	home := "/home/foo"
 	config, err := loadYAMLWithEnv(`
 version: "3"
@@ -502,19 +504,162 @@ volumes:
 	assert.Equal(t, home, config.Volumes["test"].Driver)
 }
 
+func TestLoadWithInterpolationCastFull(t *testing.T) {
+	dict, err := ParseYAML([]byte(`
+version: "3.4"
+services:
+  web:
+    configs:
+      - source: appconfig
+        mode: $theint
+    secrets:
+      - source: super
+        mode: $theint
+    healthcheck:
+      retries: ${theint}
+      disable: $thebool
+    deploy:
+      replicas: $theint
+      update_config:
+        parallelism: $theint
+        max_failure_ratio: $thefloat
+      restart_policy:
+        max_attempts: $theint
+    ports:
+      - $theint
+      - "34567"
+      - target: $theint
+        published: $theint
+    ulimits:
+      nproc: $theint
+      nofile:
+        hard: $theint
+        soft: $theint
+    privileged: $thebool
+    read_only: $thebool
+    stdin_open: ${thebool}
+    tty: $thebool
+    volumes:
+      - source: data
+        type: volume
+        read_only: $thebool
+        volume:
+          nocopy: $thebool
+
+configs:
+  appconfig:
+    external: $thebool
+secrets:
+  super:
+    external: $thebool
+volumes:
+  data:
+    external: $thebool
+networks:
+  front:
+    external: $thebool
+    internal: $thebool
+    attachable: $thebool
+
+`))
+	require.NoError(t, err)
+	env := map[string]string{
+		"theint":   "555",
+		"thefloat": "3.14",
+		"thebool":  "true",
+	}
+
+	config, err := Load(buildConfigDetails(dict, env))
+	require.NoError(t, err)
+	expected := &types.Config{
+		Services: []types.ServiceConfig{
+			{
+				Name: "web",
+				Configs: []types.ServiceConfigObjConfig{
+					{
+						Source: "appconfig",
+						Mode:   uint32Ptr(555),
+					},
+				},
+				Secrets: []types.ServiceSecretConfig{
+					{
+						Source: "super",
+						Mode:   uint32Ptr(555),
+					},
+				},
+				HealthCheck: &types.HealthCheckConfig{
+					Retries: uint64Ptr(555),
+					Disable: true,
+				},
+				Deploy: types.DeployConfig{
+					Replicas: uint64Ptr(555),
+					UpdateConfig: &types.UpdateConfig{
+						Parallelism:     uint64Ptr(555),
+						MaxFailureRatio: 3.14,
+					},
+					RestartPolicy: &types.RestartPolicy{
+						MaxAttempts: uint64Ptr(555),
+					},
+				},
+				Ports: []types.ServicePortConfig{
+					{Target: 555, Mode: "ingress", Protocol: "tcp"},
+					{Target: 34567, Mode: "ingress", Protocol: "tcp"},
+					{Target: 555, Published: 555},
+				},
+				Ulimits: map[string]*types.UlimitsConfig{
+					"nproc":  {Single: 555},
+					"nofile": {Hard: 555, Soft: 555},
+				},
+				Privileged: true,
+				ReadOnly:   true,
+				StdinOpen:  true,
+				Tty:        true,
+				Volumes: []types.ServiceVolumeConfig{
+					{
+						Source:   "data",
+						Type:     "volume",
+						ReadOnly: true,
+						Volume:   &types.ServiceVolumeVolume{NoCopy: true},
+					},
+				},
+				Environment: types.MappingWithEquals{},
+			},
+		},
+		Configs: map[string]types.ConfigObjConfig{
+			"appconfig": {External: types.External{External: true}, Name: "appconfig"},
+		},
+		Secrets: map[string]types.SecretConfig{
+			"super": {External: types.External{External: true}, Name: "super"},
+		},
+		Volumes: map[string]types.VolumeConfig{
+			"data": {External: types.External{External: true}, Name: "data"},
+		},
+		Networks: map[string]types.NetworkConfig{
+			"front": {
+				External:   types.External{External: true},
+				Name:       "front",
+				Internal:   true,
+				Attachable: true,
+			},
+		},
+	}
+
+	assert.Equal(t, expected, config)
+}
+
 func TestUnsupportedProperties(t *testing.T) {
 	dict, err := ParseYAML([]byte(`
 version: "3"
 services:
   web:
     image: web
-    build: 
+    build:
      context: ./web
     links:
       - bar
   db:
     image: db
-    build: 
+    build:
      context: ./db
 `))
 	require.NoError(t, err)
@@ -656,7 +801,7 @@ volumes:
 	assert.Contains(t, err.Error(), "external_volume")
 }
 
-func TestInvalidExternalNameAndNameCombination(t *testing.T) {
+func TestLoadVolumeInvalidExternalNameAndNameCombination(t *testing.T) {
 	_, err := loadYAML(`
 version: "3.4"
 volumes:
@@ -676,6 +821,10 @@ func durationPtr(value time.Duration) *time.Duration {
 }
 
 func uint64Ptr(value uint64) *uint64 {
+	return &value
+}
+
+func uint32Ptr(value uint32) *uint32 {
 	return &value
 }
 
@@ -731,6 +880,20 @@ func TestFullExample(t *testing.T) {
 				Reservations: &types.Resource{
 					NanoCPUs:    "0.0001",
 					MemoryBytes: 20 * 1024 * 1024,
+					GenericResources: []types.GenericResource{
+						{
+							DiscreteResourceSpec: &types.DiscreteGenericResource{
+								Kind:  "gpu",
+								Value: 2,
+							},
+						},
+						{
+							DiscreteResourceSpec: &types.DiscreteGenericResource{
+								Kind:  "ssd",
+								Value: 1,
+							},
+						},
+					},
 				},
 			},
 			RestartPolicy: &types.RestartPolicy{
@@ -770,9 +933,9 @@ func TestFullExample(t *testing.T) {
 			"project_db_1:mysql",
 			"project_db_1:postgresql",
 		},
-		ExtraHosts: map[string]string{
-			"otherhost": "50.31.209.229",
-			"somehost":  "162.242.195.82",
+		ExtraHosts: []string{
+			"somehost:162.242.195.82",
+			"otherhost:50.31.209.229",
 		},
 		HealthCheck: &types.HealthCheckConfig{
 			Test:        types.HealthCheckTest([]string{"CMD-SHELL", "echo \"hello world\""}),
@@ -1010,17 +1173,13 @@ func TestFullExample(t *testing.T) {
 		},
 
 		"external-network": {
-			External: types.External{
-				Name:     "external-network",
-				External: true,
-			},
+			Name:     "external-network",
+			External: types.External{External: true},
 		},
 
 		"other-external-network": {
-			External: types.External{
-				Name:     "my-cool-network",
-				External: true,
-			},
+			Name:     "my-cool-network",
+			External: types.External{External: true},
 		},
 	}
 
@@ -1044,23 +1203,16 @@ func TestFullExample(t *testing.T) {
 			},
 		},
 		"external-volume": {
-			External: types.External{
-				Name:     "external-volume",
-				External: true,
-			},
+			Name:     "external-volume",
+			External: types.External{External: true},
 		},
 		"other-external-volume": {
-			External: types.External{
-				Name:     "my-cool-volume",
-				External: true,
-			},
+			Name:     "my-cool-volume",
+			External: types.External{External: true},
 		},
 		"external-volume3": {
-			Name: "this-is-volume3",
-			External: types.External{
-				Name:     "external-volume3",
-				External: true,
-			},
+			Name:     "this-is-volume3",
+			External: types.External{External: true},
 		},
 	}
 
@@ -1215,4 +1367,251 @@ volumes:
 	require.Len(t, config.Services, 1)
 	assert.Len(t, config.Services[0].Volumes, 1)
 	assert.Equal(t, expected, config.Services[0].Volumes[0])
+}
+
+func TestLoadExtraHostsMap(t *testing.T) {
+	config, err := loadYAML(`
+version: "3.2"
+services:
+  web:
+    image: busybox
+    extra_hosts:
+      "zulu": "162.242.195.82"
+      "alpha": "50.31.209.229"
+`)
+	require.NoError(t, err)
+
+	expected := types.HostsList{
+		"alpha:50.31.209.229",
+		"zulu:162.242.195.82",
+	}
+
+	require.Len(t, config.Services, 1)
+	assert.Equal(t, expected, config.Services[0].ExtraHosts)
+}
+
+func TestLoadExtraHostsList(t *testing.T) {
+	config, err := loadYAML(`
+version: "3.2"
+services:
+  web:
+    image: busybox
+    extra_hosts:
+      - "zulu:162.242.195.82"
+      - "alpha:50.31.209.229"
+      - "zulu:ff02::1"
+`)
+	require.NoError(t, err)
+
+	expected := types.HostsList{
+		"zulu:162.242.195.82",
+		"alpha:50.31.209.229",
+		"zulu:ff02::1",
+	}
+
+	require.Len(t, config.Services, 1)
+	assert.Equal(t, expected, config.Services[0].ExtraHosts)
+}
+
+func TestLoadVolumesWarnOnDeprecatedExternalNameVersion34(t *testing.T) {
+	buf, cleanup := patchLogrus()
+	defer cleanup()
+
+	source := map[string]interface{}{
+		"foo": map[string]interface{}{
+			"external": map[string]interface{}{
+				"name": "oops",
+			},
+		},
+	}
+	volumes, err := LoadVolumes(source, "3.4")
+	require.NoError(t, err)
+	expected := map[string]types.VolumeConfig{
+		"foo": {
+			Name:     "oops",
+			External: types.External{External: true},
+		},
+	}
+	assert.Equal(t, expected, volumes)
+	assert.Contains(t, buf.String(), "volume.external.name is deprecated")
+
+}
+
+func patchLogrus() (*bytes.Buffer, func()) {
+	buf := new(bytes.Buffer)
+	out := logrus.StandardLogger().Out
+	logrus.SetOutput(buf)
+	return buf, func() { logrus.SetOutput(out) }
+}
+
+func TestLoadVolumesWarnOnDeprecatedExternalNameVersion33(t *testing.T) {
+	buf, cleanup := patchLogrus()
+	defer cleanup()
+
+	source := map[string]interface{}{
+		"foo": map[string]interface{}{
+			"external": map[string]interface{}{
+				"name": "oops",
+			},
+		},
+	}
+	volumes, err := LoadVolumes(source, "3.3")
+	require.NoError(t, err)
+	expected := map[string]types.VolumeConfig{
+		"foo": {
+			Name:     "oops",
+			External: types.External{External: true},
+		},
+	}
+	assert.Equal(t, expected, volumes)
+	assert.Equal(t, "", buf.String())
+}
+
+func TestLoadV35(t *testing.T) {
+	actual, err := loadYAML(`
+version: "3.5"
+services:
+  foo:
+    image: busybox
+    isolation: process
+configs:
+  foo:
+    name: fooqux
+    external: true
+  bar:
+    name: barqux
+    file: ./example1.env
+secrets:
+  foo:
+    name: fooqux
+    external: true
+  bar:
+    name: barqux
+    file: ./full-example.yml
+`)
+	require.NoError(t, err)
+	assert.Len(t, actual.Services, 1)
+	assert.Len(t, actual.Secrets, 2)
+	assert.Len(t, actual.Configs, 2)
+	assert.Equal(t, "process", actual.Services[0].Isolation)
+}
+
+func TestLoadV35InvalidIsolation(t *testing.T) {
+	// validation should be done only on the daemon side
+	actual, err := loadYAML(`
+version: "3.5"
+services:
+  foo:
+    image: busybox
+    isolation: invalid
+configs:
+  super:
+    external: true
+`)
+	require.NoError(t, err)
+	require.Len(t, actual.Services, 1)
+	assert.Equal(t, "invalid", actual.Services[0].Isolation)
+}
+
+func TestLoadSecretInvalidExternalNameAndNameCombination(t *testing.T) {
+	_, err := loadYAML(`
+version: "3.5"
+secrets:
+  external_secret:
+    name: user_specified_name
+    external:
+      name:	external_name
+`)
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "secret.external.name and secret.name conflict; only use secret.name")
+	assert.Contains(t, err.Error(), "external_secret")
+}
+
+func TestLoadSecretsWarnOnDeprecatedExternalNameVersion35(t *testing.T) {
+	buf, cleanup := patchLogrus()
+	defer cleanup()
+
+	source := map[string]interface{}{
+		"foo": map[string]interface{}{
+			"external": map[string]interface{}{
+				"name": "oops",
+			},
+		},
+	}
+	details := types.ConfigDetails{
+		Version: "3.5",
+	}
+	secrets, err := LoadSecrets(source, details)
+	require.NoError(t, err)
+	expected := map[string]types.SecretConfig{
+		"foo": {
+			Name:     "oops",
+			External: types.External{External: true},
+		},
+	}
+	assert.Equal(t, expected, secrets)
+	assert.Contains(t, buf.String(), "secret.external.name is deprecated")
+}
+
+func TestLoadNetworksWarnOnDeprecatedExternalNameVersion35(t *testing.T) {
+	buf, cleanup := patchLogrus()
+	defer cleanup()
+
+	source := map[string]interface{}{
+		"foo": map[string]interface{}{
+			"external": map[string]interface{}{
+				"name": "oops",
+			},
+		},
+	}
+	networks, err := LoadNetworks(source, "3.5")
+	require.NoError(t, err)
+	expected := map[string]types.NetworkConfig{
+		"foo": {
+			Name:     "oops",
+			External: types.External{External: true},
+		},
+	}
+	assert.Equal(t, expected, networks)
+	assert.Contains(t, buf.String(), "network.external.name is deprecated")
+
+}
+
+func TestLoadNetworksWarnOnDeprecatedExternalNameVersion34(t *testing.T) {
+	buf, cleanup := patchLogrus()
+	defer cleanup()
+
+	source := map[string]interface{}{
+		"foo": map[string]interface{}{
+			"external": map[string]interface{}{
+				"name": "oops",
+			},
+		},
+	}
+	networks, err := LoadNetworks(source, "3.4")
+	require.NoError(t, err)
+	expected := map[string]types.NetworkConfig{
+		"foo": {
+			Name:     "oops",
+			External: types.External{External: true},
+		},
+	}
+	assert.Equal(t, expected, networks)
+	assert.Equal(t, "", buf.String())
+}
+
+func TestLoadNetworkInvalidExternalNameAndNameCombination(t *testing.T) {
+	_, err := loadYAML(`
+version: "3.5"
+networks:
+  foo:
+    name: user_specified_name
+    external:
+      name:	external_name
+`)
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "network.external.name and network.name conflict; only use network.name")
+	assert.Contains(t, err.Error(), "foo")
 }

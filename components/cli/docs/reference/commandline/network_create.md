@@ -4,7 +4,7 @@ description: "The network create command description and usage"
 keywords: "network, create"
 ---
 
-<!-- This file is maintained within the docker/cli Github
+<!-- This file is maintained within the docker/cli GitHub
      repository at https://github.com/docker/cli/. Make all
      pull requests against that repo. If you see this file in
      another repository, consider it read-only there, as it will
@@ -204,7 +204,7 @@ to create an externally isolated `overlay` network, you can specify the
 You can create the network which will be used to provide the routing-mesh in the
 swarm cluster. You do so by specifying `--ingress` when creating the network. Only
 one ingress network can be created at the time. The network can be removed only
-if no services depend on it. Any option available when creating a overlay network
+if no services depend on it. Any option available when creating an overlay network
 is also available when creating the ingress network, besides the `--attachable` option.
 
 ```bash

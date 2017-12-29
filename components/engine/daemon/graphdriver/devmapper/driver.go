@@ -73,19 +73,14 @@ func (d *Driver) Status() [][2]string {
 		{"Pool Blocksize", units.HumanSize(float64(s.SectorSize))},
 		{"Base Device Size", units.HumanSize(float64(s.BaseDeviceSize))},
 		{"Backing Filesystem", s.BaseDeviceFS},
-		{"Data file", s.DataFile},
-		{"Metadata file", s.MetadataFile},
-		{"Data Space Used", units.HumanSize(float64(s.Data.Used))},
-		{"Data Space Total", units.HumanSize(float64(s.Data.Total))},
-		{"Data Space Available", units.HumanSize(float64(s.Data.Available))},
-		{"Metadata Space Used", units.HumanSize(float64(s.Metadata.Used))},
-		{"Metadata Space Total", units.HumanSize(float64(s.Metadata.Total))},
-		{"Metadata Space Available", units.HumanSize(float64(s.Metadata.Available))},
-		{"Thin Pool Minimum Free Space", units.HumanSize(float64(s.MinFreeSpace))},
 		{"Udev Sync Supported", fmt.Sprintf("%v", s.UdevSyncSupported)},
-		{"Deferred Removal Enabled", fmt.Sprintf("%v", s.DeferredRemoveEnabled)},
-		{"Deferred Deletion Enabled", fmt.Sprintf("%v", s.DeferredDeleteEnabled)},
-		{"Deferred Deleted Device Count", fmt.Sprintf("%v", s.DeferredDeletedDeviceCount)},
+	}
+
+	if len(s.DataFile) > 0 {
+		status = append(status, [2]string{"Data file", s.DataFile})
+	}
+	if len(s.MetadataFile) > 0 {
+		status = append(status, [2]string{"Metadata file", s.MetadataFile})
 	}
 	if len(s.DataLoopback) > 0 {
 		status = append(status, [2]string{"Data loop file", s.DataLoopback})
@@ -93,6 +88,20 @@ func (d *Driver) Status() [][2]string {
 	if len(s.MetadataLoopback) > 0 {
 		status = append(status, [2]string{"Metadata loop file", s.MetadataLoopback})
 	}
+
+	status = append(status, [][2]string{
+		{"Data Space Used", units.HumanSize(float64(s.Data.Used))},
+		{"Data Space Total", units.HumanSize(float64(s.Data.Total))},
+		{"Data Space Available", units.HumanSize(float64(s.Data.Available))},
+		{"Metadata Space Used", units.HumanSize(float64(s.Metadata.Used))},
+		{"Metadata Space Total", units.HumanSize(float64(s.Metadata.Total))},
+		{"Metadata Space Available", units.HumanSize(float64(s.Metadata.Available))},
+		{"Thin Pool Minimum Free Space", units.HumanSize(float64(s.MinFreeSpace))},
+		{"Deferred Removal Enabled", fmt.Sprintf("%v", s.DeferredRemoveEnabled)},
+		{"Deferred Deletion Enabled", fmt.Sprintf("%v", s.DeferredDeleteEnabled)},
+		{"Deferred Deleted Device Count", fmt.Sprintf("%v", s.DeferredDeletedDeviceCount)},
+	}...)
+
 	if vStr, err := devicemapper.GetLibraryVersion(); err == nil {
 		status = append(status, [2]string{"Library Version", vStr})
 	}
@@ -180,11 +189,11 @@ func (d *Driver) Get(id, mountLabel string) (containerfs.ContainerFS, error) {
 	}
 
 	// Create the target directories if they don't exist
-	if err := idtools.MkdirAllAs(path.Join(d.home, "mnt"), 0755, uid, gid); err != nil && !os.IsExist(err) {
+	if err := idtools.MkdirAllAndChown(path.Join(d.home, "mnt"), 0755, idtools.IDPair{UID: uid, GID: gid}); err != nil {
 		d.ctr.Decrement(mp)
 		return nil, err
 	}
-	if err := idtools.MkdirAs(mp, 0755, uid, gid); err != nil && !os.IsExist(err) {
+	if err := idtools.MkdirAndChown(mp, 0755, idtools.IDPair{UID: uid, GID: gid}); err != nil && !os.IsExist(err) {
 		d.ctr.Decrement(mp)
 		return nil, err
 	}
@@ -195,7 +204,7 @@ func (d *Driver) Get(id, mountLabel string) (containerfs.ContainerFS, error) {
 		return nil, err
 	}
 
-	if err := idtools.MkdirAllAs(rootFs, 0755, uid, gid); err != nil && !os.IsExist(err) {
+	if err := idtools.MkdirAllAndChown(rootFs, 0755, idtools.IDPair{UID: uid, GID: gid}); err != nil {
 		d.ctr.Decrement(mp)
 		d.DeviceSet.UnmountDevice(id, mp)
 		return nil, err
@@ -223,10 +232,12 @@ func (d *Driver) Put(id string) error {
 	if count := d.ctr.Decrement(mp); count > 0 {
 		return nil
 	}
+
 	err := d.DeviceSet.UnmountDevice(id, mp)
 	if err != nil {
-		logrus.Errorf("devmapper: Error unmounting device %s: %s", id, err)
+		logrus.Errorf("devmapper: Error unmounting device %s: %v", id, err)
 	}
+
 	return err
 }
 

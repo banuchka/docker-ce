@@ -1,4 +1,4 @@
-// +build linux freebsd solaris
+// +build linux freebsd
 
 package container
 
@@ -21,17 +21,11 @@ import (
 )
 
 const (
+	// DefaultStopTimeout is the timeout (in seconds) for the syscall signal used to stop a container.
+	DefaultStopTimeout = 10
+
 	containerSecretMountPath = "/run/secrets"
 )
-
-// ExitStatus provides exit reasons for a container.
-type ExitStatus struct {
-	// The exit code with which the container exited.
-	ExitCode int
-
-	// Whether the container encountered an OOM.
-	OOMKilled bool
-}
 
 // TrySetNetworkMount attempts to set the network mounts given a provided destination and
 // the path to use for it; return true if the given destination was a network mount file
@@ -66,17 +60,16 @@ func (container *Container) BuildHostnameFile() error {
 func (container *Container) NetworkMounts() []Mount {
 	var mounts []Mount
 	shared := container.HostConfig.NetworkMode.IsContainer()
-	parser := volume.NewParser(container.Platform)
+	parser := volume.NewParser(container.OS)
 	if container.ResolvConfPath != "" {
 		if _, err := os.Stat(container.ResolvConfPath); err != nil {
 			logrus.Warnf("ResolvConfPath set to %q, but can't stat this filename (err = %v); skipping", container.ResolvConfPath, err)
 		} else {
-			if !container.HasMountFor("/etc/resolv.conf") {
-				label.Relabel(container.ResolvConfPath, container.MountLabel, shared)
-			}
 			writable := !container.HostConfig.ReadonlyRootfs
 			if m, exists := container.MountPoints["/etc/resolv.conf"]; exists {
 				writable = m.RW
+			} else {
+				label.Relabel(container.ResolvConfPath, container.MountLabel, shared)
 			}
 			mounts = append(mounts, Mount{
 				Source:      container.ResolvConfPath,
@@ -90,12 +83,11 @@ func (container *Container) NetworkMounts() []Mount {
 		if _, err := os.Stat(container.HostnamePath); err != nil {
 			logrus.Warnf("HostnamePath set to %q, but can't stat this filename (err = %v); skipping", container.HostnamePath, err)
 		} else {
-			if !container.HasMountFor("/etc/hostname") {
-				label.Relabel(container.HostnamePath, container.MountLabel, shared)
-			}
 			writable := !container.HostConfig.ReadonlyRootfs
 			if m, exists := container.MountPoints["/etc/hostname"]; exists {
 				writable = m.RW
+			} else {
+				label.Relabel(container.HostnamePath, container.MountLabel, shared)
 			}
 			mounts = append(mounts, Mount{
 				Source:      container.HostnamePath,
@@ -109,12 +101,11 @@ func (container *Container) NetworkMounts() []Mount {
 		if _, err := os.Stat(container.HostsPath); err != nil {
 			logrus.Warnf("HostsPath set to %q, but can't stat this filename (err = %v); skipping", container.HostsPath, err)
 		} else {
-			if !container.HasMountFor("/etc/hosts") {
-				label.Relabel(container.HostsPath, container.MountLabel, shared)
-			}
 			writable := !container.HostConfig.ReadonlyRootfs
 			if m, exists := container.MountPoints["/etc/hosts"]; exists {
 				writable = m.RW
+			} else {
+				label.Relabel(container.HostsPath, container.MountLabel, shared)
 			}
 			mounts = append(mounts, Mount{
 				Source:      container.HostsPath,
@@ -166,7 +157,18 @@ func (container *Container) ShmResourcePath() (string, error) {
 // HasMountFor checks if path is a mountpoint
 func (container *Container) HasMountFor(path string) bool {
 	_, exists := container.MountPoints[path]
-	return exists
+	if exists {
+		return true
+	}
+
+	// Also search among the tmpfs mounts
+	for dest := range container.HostConfig.Tmpfs {
+		if dest == path {
+			return true
+		}
+	}
+
+	return false
 }
 
 // UnmountIpcMount uses the provided unmount function to unmount shm if it was mounted
@@ -195,7 +197,7 @@ func (container *Container) UnmountIpcMount(unmount func(pth string) error) erro
 // IpcMounts returns the list of IPC mounts
 func (container *Container) IpcMounts() []Mount {
 	var mounts []Mount
-	parser := volume.NewParser(container.Platform)
+	parser := volume.NewParser(container.OS)
 
 	if container.HasMountFor("/dev/shm") {
 		return mounts
@@ -330,6 +332,12 @@ func (container *Container) UpdateContainer(hostConfig *containertypes.HostConfi
 	if resources.KernelMemory != 0 {
 		cResources.KernelMemory = resources.KernelMemory
 	}
+	if resources.CPURealtimePeriod != 0 {
+		cResources.CPURealtimePeriod = resources.CPURealtimePeriod
+	}
+	if resources.CPURealtimeRuntime != 0 {
+		cResources.CPURealtimeRuntime = resources.CPURealtimeRuntime
+	}
 
 	// update HostConfig of container
 	if hostConfig.RestartPolicy.Name != "" {
@@ -429,7 +437,7 @@ func copyOwnership(source, destination string) error {
 
 // TmpfsMounts returns the list of tmpfs mounts
 func (container *Container) TmpfsMounts() ([]Mount, error) {
-	parser := volume.NewParser(container.Platform)
+	parser := volume.NewParser(container.OS)
 	var mounts []Mount
 	for dest, data := range container.HostConfig.Tmpfs {
 		mounts = append(mounts, Mount{

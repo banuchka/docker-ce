@@ -44,6 +44,7 @@ type networkConfiguration struct {
 	NetworkAdapterName string
 	dbIndex            uint64
 	dbExists           bool
+	DisableGatewayDNS  bool
 }
 
 // endpointConfiguration represents the user specified configuration for the sandbox endpoint
@@ -62,10 +63,17 @@ type EndpointConnectivity struct {
 }
 
 type hnsEndpoint struct {
-	id             string
-	nid            string
-	profileID      string
-	Type           string
+	id        string
+	nid       string
+	profileID string
+	Type      string
+	//Note: Currently, the sandboxID is the same as the containerID since windows does
+	//not expose the sandboxID.
+	//In the future, windows will support a proper sandboxID that is different
+	//than the containerID.
+	//Therefore, we are using sandboxID now, so that we won't have to change this code
+	//when windows properly supports a sandboxID.
+	sandboxID      string
 	macAddress     net.HardwareAddr
 	epOption       *endpointOption       // User specified parameters
 	epConnectivity *EndpointConnectivity // User specified parameters
@@ -170,6 +178,12 @@ func (d *driver) parseNetworkOptions(id string, genericOptions map[string]string
 			config.DNSSuffix = value
 		case DNSServers:
 			config.DNSServers = value
+		case DisableGatewayDNS:
+			b, err := strconv.ParseBool(value)
+			if err != nil {
+				return nil, err
+			}
+			config.DisableGatewayDNS = b
 		case MacPool:
 			config.MacPools = make([]hcsshim.MacPool, 0)
 			s := strings.Split(value, ",")
@@ -582,7 +596,14 @@ func (d *driver) CreateEndpoint(nid, eid string, ifInfo driverapi.InterfaceInfo,
 
 	endpointStruct.DNSServerList = strings.Join(epOption.DNSServers, ",")
 
+	// overwrite the ep DisableDNS option if DisableGatewayDNS was set to true during the network creation option
+	if n.config.DisableGatewayDNS {
+		logrus.Debugf("n.config.DisableGatewayDNS[%v] overwrites epOption.DisableDNS[%v]", n.config.DisableGatewayDNS, epOption.DisableDNS)
+		epOption.DisableDNS = n.config.DisableGatewayDNS
+	}
+
 	if n.driver.name == "nat" && !epOption.DisableDNS {
+		logrus.Debugf("endpointStruct.EnableInternalDNS =[%v]", endpointStruct.EnableInternalDNS)
 		endpointStruct.EnableInternalDNS = true
 	}
 
@@ -639,7 +660,7 @@ func (d *driver) CreateEndpoint(nid, eid string, ifInfo driverapi.InterfaceInfo,
 	}
 
 	if err = d.storeUpdate(endpoint); err != nil {
-		return fmt.Errorf("failed to save endpoint %s to store: %v", endpoint.id[0:7], err)
+		logrus.Errorf("Failed to save endpoint %s to store: %v", endpoint.id[0:7], err)
 	}
 
 	return nil
@@ -730,7 +751,15 @@ func (d *driver) Join(nid, eid string, sboxKey string, jinfo driverapi.JoinInfo,
 		return err
 	}
 
-	// This is just a stub for now
+	endpoint.sandboxID = sboxKey
+
+	err = hcsshim.HotAttachEndpoint(endpoint.sandboxID, endpoint.profileID)
+	if err != nil {
+		// If container doesn't exists in hcs, do not throw error for hot add/remove
+		if err != hcsshim.ErrComputeSystemDoesNotExist {
+			return err
+		}
+	}
 
 	jinfo.DisableGatewayService()
 	return nil
@@ -744,13 +773,18 @@ func (d *driver) Leave(nid, eid string) error {
 	}
 
 	// Ensure that the endpoint exists
-	_, err = network.getEndpoint(eid)
+	endpoint, err := network.getEndpoint(eid)
 	if err != nil {
 		return err
 	}
 
-	// This is just a stub for now
-
+	err = hcsshim.HotDetachEndpoint(endpoint.sandboxID, endpoint.profileID)
+	if err != nil {
+		// If container doesn't exists in hcs, do not throw error for hot add/remove
+		if err != hcsshim.ErrComputeSystemDoesNotExist {
+			return err
+		}
+	}
 	return nil
 }
 

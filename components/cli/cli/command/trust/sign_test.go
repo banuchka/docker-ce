@@ -1,25 +1,24 @@
 package trust
 
 import (
+	"bytes"
 	"encoding/json"
 	"io/ioutil"
 	"os"
 	"testing"
 
-	"bytes"
-
 	"github.com/docker/cli/cli/config"
 	"github.com/docker/cli/cli/trust"
 	"github.com/docker/cli/internal/test"
 	"github.com/docker/cli/internal/test/testutil"
-	"github.com/docker/notary"
-	"github.com/docker/notary/client"
-	"github.com/docker/notary/client/changelist"
-	"github.com/docker/notary/passphrase"
-	"github.com/docker/notary/trustpinning"
-	"github.com/docker/notary/tuf/data"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/theupdateframework/notary"
+	"github.com/theupdateframework/notary/client"
+	"github.com/theupdateframework/notary/client/changelist"
+	"github.com/theupdateframework/notary/passphrase"
+	"github.com/theupdateframework/notary/trustpinning"
+	"github.com/theupdateframework/notary/tuf/data"
 )
 
 const passwd = "password"
@@ -140,7 +139,8 @@ func TestAddStageSigners(t *testing.T) {
 	// stage targets/user
 	userRole := data.RoleName("targets/user")
 	userKey := data.NewPublicKey("algoA", []byte("a"))
-	addStagedSigner(notaryRepo, userRole, []data.PublicKey{userKey})
+	err = addStagedSigner(notaryRepo, userRole, []data.PublicKey{userKey})
+	assert.NoError(t, err)
 	// check the changelist for four total changes: two on targets/releases and two on targets/user
 	cl, err := notaryRepo.GetChangelist()
 	assert.NoError(t, err)
@@ -294,4 +294,14 @@ func TestSignCommandChangeListIsCleanedOnError(t *testing.T) {
 	cl, err := notaryRepo.GetChangelist()
 	require.NoError(t, err)
 	assert.Equal(t, len(cl.List()), 0)
+}
+
+func TestSignCommandLocalFlag(t *testing.T) {
+	cli := test.NewFakeCli(&fakeClient{})
+	cli.SetNotaryClient(getEmptyTargetsNotaryRepository)
+	cmd := newSignCommand(cli)
+	cmd.SetArgs([]string{"--local", "reg-name.io/image:red"})
+	cmd.SetOutput(ioutil.Discard)
+	testutil.ErrorContains(t, cmd.Execute(), "error during connect: Get /images/reg-name.io/image:red/json: unsupported protocol scheme")
+
 }

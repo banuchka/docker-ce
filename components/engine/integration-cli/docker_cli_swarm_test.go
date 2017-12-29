@@ -849,7 +849,7 @@ func (s *DockerSwarmSuite) TestSwarmServiceTTY(c *check.C) {
 	waitAndAssert(c, defaultReconciliationTimeout, d.CheckActiveContainerCount, checker.Equals, 1)
 
 	// We need to get the container id.
-	out, err = d.Cmd("ps", "-a", "-q", "--no-trunc")
+	out, err = d.Cmd("ps", "-q", "--no-trunc")
 	c.Assert(err, checker.IsNil)
 	id := strings.TrimSpace(out)
 
@@ -872,7 +872,7 @@ func (s *DockerSwarmSuite) TestSwarmServiceTTY(c *check.C) {
 	waitAndAssert(c, defaultReconciliationTimeout, d.CheckActiveContainerCount, checker.Equals, 1)
 
 	// We need to get the container id.
-	out, err = d.Cmd("ps", "-a", "-q", "--no-trunc")
+	out, err = d.Cmd("ps", "-q", "--no-trunc")
 	c.Assert(err, checker.IsNil)
 	id = strings.TrimSpace(out)
 
@@ -1545,7 +1545,8 @@ func (s *DockerSwarmSuite) TestSwarmNetworkIPAMOptions(c *check.C) {
 
 	out, err = d.Cmd("network", "inspect", "--format", "{{.IPAM.Options}}", "foo")
 	c.Assert(err, checker.IsNil, check.Commentf(out))
-	c.Assert(strings.TrimSpace(out), checker.Equals, "map[foo:bar]")
+	c.Assert(strings.TrimSpace(out), checker.Contains, "foo:bar")
+	c.Assert(strings.TrimSpace(out), checker.Contains, "com.docker.network.ipam.serial:true")
 
 	out, err = d.Cmd("service", "create", "--detach", "--no-resolve-image", "--network=foo", "--name", "top", "busybox", "top")
 	c.Assert(err, checker.IsNil, check.Commentf(out))
@@ -1555,7 +1556,8 @@ func (s *DockerSwarmSuite) TestSwarmNetworkIPAMOptions(c *check.C) {
 
 	out, err = d.Cmd("network", "inspect", "--format", "{{.IPAM.Options}}", "foo")
 	c.Assert(err, checker.IsNil, check.Commentf(out))
-	c.Assert(strings.TrimSpace(out), checker.Equals, "map[foo:bar]")
+	c.Assert(strings.TrimSpace(out), checker.Contains, "foo:bar")
+	c.Assert(strings.TrimSpace(out), checker.Contains, "com.docker.network.ipam.serial:true")
 }
 
 func (s *DockerTrustedSwarmSuite) TestTrustedServiceCreate(c *check.C) {

@@ -67,7 +67,7 @@ func (p *v2Pusher) Push(ctx context.Context) (err error) {
 	}
 
 	if err = p.pushV2Repository(ctx); err != nil {
-		if continueOnError(err) {
+		if continueOnError(err, p.endpoint.Mirror) {
 			return fallbackError{
 				err:         err,
 				confirmedV2: p.pushState.confirmedV2,
@@ -118,7 +118,7 @@ func (p *v2Pusher) pushV2Tag(ctx context.Context, ref reference.NamedTagged, id 
 		return fmt.Errorf("could not find image from tag %s: %v", reference.FamiliarString(ref), err)
 	}
 
-	rootfs, _, err := p.config.ImageStore.RootFSAndPlatformFromConfig(imgConfig)
+	rootfs, _, err := p.config.ImageStore.RootFSAndOSFromConfig(imgConfig)
 	if err != nil {
 		return fmt.Errorf("unable to get rootfs for image %s: %s", reference.FamiliarString(ref), err)
 	}

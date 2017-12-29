@@ -1,6 +1,7 @@
 package service
 
 import (
+	"runtime"
 	"testing"
 	"time"
 
@@ -10,12 +11,11 @@ import (
 	"github.com/docker/docker/client"
 	"github.com/docker/docker/integration-cli/request"
 	"github.com/gotestyourself/gotestyourself/poll"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/net/context"
 )
 
-func TestCreateWithLBSandbox(t *testing.T) {
+func TestCreateServiceMultipleTimes(t *testing.T) {
 	defer setupTest(t)()
 	d := newSwarm(t)
 	defer d.Stop(t)
@@ -32,9 +32,8 @@ func TestCreateWithLBSandbox(t *testing.T) {
 	require.NoError(t, err)
 	overlayID := netResp.ID
 
-	var instances uint64 = 1
+	var instances uint64 = 4
 	serviceSpec := swarmServiceSpec("TestService", instances)
-
 	serviceSpec.TaskTemplate.Networks = append(serviceSpec.TaskTemplate.Networks, swarm.NetworkAttachmentConfig{Target: overlayName})
 
 	serviceResp, err := client.ServiceCreate(context.Background(), serviceSpec, types.ServiceCreateOptions{
@@ -42,20 +41,39 @@ func TestCreateWithLBSandbox(t *testing.T) {
 	})
 	require.NoError(t, err)
 
+	pollSettings := func(config *poll.Settings) {
+		if runtime.GOARCH == "arm" {
+			config.Timeout = 30 * time.Second
+			config.Delay = 100 * time.Millisecond
+		}
+	}
+
 	serviceID := serviceResp.ID
-	poll.WaitOn(t, serviceRunningTasksCount(client, serviceID, instances))
+	poll.WaitOn(t, serviceRunningTasksCount(client, serviceID, instances), pollSettings)
 
 	_, _, err = client.ServiceInspectWithRaw(context.Background(), serviceID, types.ServiceInspectOptions{})
 	require.NoError(t, err)
 
-	network, err := client.NetworkInspect(context.Background(), overlayID, types.NetworkInspectOptions{})
-	require.NoError(t, err)
-	assert.Contains(t, network.Containers, overlayName+"-sbox")
-
 	err = client.ServiceRemove(context.Background(), serviceID)
 	require.NoError(t, err)
 
-	poll.WaitOn(t, serviceIsRemoved(client, serviceID))
+	poll.WaitOn(t, serviceIsRemoved(client, serviceID), pollSettings)
+	poll.WaitOn(t, noTasks(client), pollSettings)
+
+	serviceResp, err = client.ServiceCreate(context.Background(), serviceSpec, types.ServiceCreateOptions{
+		QueryRegistry: false,
+	})
+	require.NoError(t, err)
+
+	serviceID2 := serviceResp.ID
+	poll.WaitOn(t, serviceRunningTasksCount(client, serviceID2, instances), pollSettings)
+
+	err = client.ServiceRemove(context.Background(), serviceID2)
+	require.NoError(t, err)
+
+	poll.WaitOn(t, serviceIsRemoved(client, serviceID2), pollSettings)
+	poll.WaitOn(t, noTasks(client), pollSettings)
+
 	err = client.NetworkRemove(context.Background(), overlayID)
 	require.NoError(t, err)
 
@@ -100,6 +118,23 @@ func serviceRunningTasksCount(client client.ServiceAPIClient, serviceID string, 
 			return poll.Success()
 		default:
 			return poll.Continue("task count at %d waiting for %d", len(tasks), instances)
+		}
+	}
+}
+
+func noTasks(client client.ServiceAPIClient) func(log poll.LogT) poll.Result {
+	return func(log poll.LogT) poll.Result {
+		filter := filters.NewArgs()
+		tasks, err := client.TaskList(context.Background(), types.TaskListOptions{
+			Filters: filter,
+		})
+		switch {
+		case err != nil:
+			return poll.Error(err)
+		case len(tasks) == 0:
+			return poll.Success()
+		default:
+			return poll.Continue("task count at %d waiting for 0", len(tasks))
 		}
 	}
 }

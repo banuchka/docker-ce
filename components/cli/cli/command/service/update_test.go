@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/docker/cli/internal/test/testutil"
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
 	mounttypes "github.com/docker/docker/api/types/mount"
@@ -165,7 +166,7 @@ func TestUpdateDNSConfig(t *testing.T) {
 	// IPv6
 	flags.Set("dns-add", "2001:db8:abc8::1")
 	// Invalid dns record
-	assert.EqualError(t, flags.Set("dns-add", "x.y.z.w"), "x.y.z.w is not an ip address")
+	testutil.ErrorContains(t, flags.Set("dns-add", "x.y.z.w"), "x.y.z.w is not an ip address")
 
 	// domains with duplicates
 	flags.Set("dns-search-add", "example.com")
@@ -173,7 +174,7 @@ func TestUpdateDNSConfig(t *testing.T) {
 	flags.Set("dns-search-add", "example.org")
 	flags.Set("dns-search-rm", "example.org")
 	// Invalid dns search domain
-	assert.EqualError(t, flags.Set("dns-search-add", "example$com"), "example$com is not a valid domain")
+	testutil.ErrorContains(t, flags.Set("dns-search-add", "example$com"), "example$com is not a valid domain")
 
 	flags.Set("dns-option-add", "ndots:9")
 	flags.Set("dns-option-rm", "timeout:3")
@@ -362,15 +363,26 @@ func TestUpdateHosts(t *testing.T) {
 	// just hostname should work as well
 	flags.Set("host-rm", "example.net")
 	// bad format error
-	assert.EqualError(t, flags.Set("host-add", "$example.com$"), `bad format for add-host: "$example.com$"`)
+	testutil.ErrorContains(t, flags.Set("host-add", "$example.com$"), `bad format for add-host: "$example.com$"`)
 
 	hosts := []string{"1.2.3.4 example.com", "4.3.2.1 example.org", "2001:db8:abc8::1 example.net"}
+	expected := []string{"1.2.3.4 example.com", "4.3.2.1 example.org", "2001:db8:abc8::1 ipv6.net"}
 
-	updateHosts(flags, &hosts)
-	require.Len(t, hosts, 3)
-	assert.Equal(t, "1.2.3.4 example.com", hosts[0])
-	assert.Equal(t, "2001:db8:abc8::1 ipv6.net", hosts[1])
-	assert.Equal(t, "4.3.2.1 example.org", hosts[2])
+	err := updateHosts(flags, &hosts)
+	assert.NoError(t, err)
+	assert.Equal(t, expected, hosts)
+}
+
+func TestUpdateHostsPreservesOrder(t *testing.T) {
+	flags := newUpdateCommand(nil).Flags()
+	flags.Set("host-add", "foobar:127.0.0.2")
+	flags.Set("host-add", "foobar:127.0.0.1")
+	flags.Set("host-add", "foobar:127.0.0.3")
+
+	hosts := []string{}
+	err := updateHosts(flags, &hosts)
+	assert.NoError(t, err)
+	assert.Equal(t, []string{"127.0.0.2 foobar", "127.0.0.1 foobar", "127.0.0.3 foobar"}, hosts)
 }
 
 func TestUpdatePortsRmWithProtocol(t *testing.T) {
@@ -505,4 +517,72 @@ func TestUpdateStopSignal(t *testing.T) {
 	flags.Set("stop-signal", "SIGWINCH")
 	updateService(nil, nil, flags, spec)
 	assert.Equal(t, "SIGWINCH", cspec.StopSignal)
+}
+
+func TestUpdateIsolationValid(t *testing.T) {
+	flags := newUpdateCommand(nil).Flags()
+	err := flags.Set("isolation", "process")
+	require.NoError(t, err)
+	spec := swarm.ServiceSpec{
+		TaskTemplate: swarm.TaskSpec{
+			ContainerSpec: &swarm.ContainerSpec{},
+		},
+	}
+	err = updateService(context.Background(), nil, flags, &spec)
+	require.NoError(t, err)
+	assert.Equal(t, container.IsolationProcess, spec.TaskTemplate.ContainerSpec.Isolation)
+}
+
+func TestUpdateIsolationInvalid(t *testing.T) {
+	// validation depends on daemon os / version so validation should be done on the daemon side
+	flags := newUpdateCommand(nil).Flags()
+	err := flags.Set("isolation", "test")
+	require.NoError(t, err)
+	spec := swarm.ServiceSpec{
+		TaskTemplate: swarm.TaskSpec{
+			ContainerSpec: &swarm.ContainerSpec{},
+		},
+	}
+	err = updateService(context.Background(), nil, flags, &spec)
+	require.NoError(t, err)
+	assert.Equal(t, container.Isolation("test"), spec.TaskTemplate.ContainerSpec.Isolation)
+}
+
+func TestAddGenericResources(t *testing.T) {
+	task := &swarm.TaskSpec{}
+	flags := newUpdateCommand(nil).Flags()
+
+	assert.Nil(t, addGenericResources(flags, task))
+
+	flags.Set(flagGenericResourcesAdd, "foo=1")
+	assert.NoError(t, addGenericResources(flags, task))
+	assert.Len(t, task.Resources.Reservations.GenericResources, 1)
+
+	// Checks that foo isn't added a 2nd time
+	flags = newUpdateCommand(nil).Flags()
+	flags.Set(flagGenericResourcesAdd, "bar=1")
+	assert.NoError(t, addGenericResources(flags, task))
+	assert.Len(t, task.Resources.Reservations.GenericResources, 2)
+}
+
+func TestRemoveGenericResources(t *testing.T) {
+	task := &swarm.TaskSpec{}
+	flags := newUpdateCommand(nil).Flags()
+
+	assert.Nil(t, removeGenericResources(flags, task))
+
+	flags.Set(flagGenericResourcesRemove, "foo")
+	assert.Error(t, removeGenericResources(flags, task))
+
+	flags = newUpdateCommand(nil).Flags()
+	flags.Set(flagGenericResourcesAdd, "foo=1")
+	addGenericResources(flags, task)
+	flags = newUpdateCommand(nil).Flags()
+	flags.Set(flagGenericResourcesAdd, "bar=1")
+	addGenericResources(flags, task)
+
+	flags = newUpdateCommand(nil).Flags()
+	flags.Set(flagGenericResourcesRemove, "foo")
+	assert.NoError(t, removeGenericResources(flags, task))
+	assert.Len(t, task.Resources.Reservations.GenericResources, 1)
 }

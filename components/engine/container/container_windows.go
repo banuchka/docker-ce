@@ -1,5 +1,3 @@
-// +build windows
-
 package container
 
 import (
@@ -16,13 +14,10 @@ const (
 	containerSecretMountPath         = `C:\ProgramData\Docker\secrets`
 	containerInternalSecretMountPath = `C:\ProgramData\Docker\internal\secrets`
 	containerInternalConfigsDirPath  = `C:\ProgramData\Docker\internal\configs`
-)
 
-// ExitStatus provides exit reasons for a container.
-type ExitStatus struct {
-	// The exit code with which the container exited.
-	ExitCode int
-}
+	// DefaultStopTimeout is the timeout (in seconds) for the shutdown call on a container
+	DefaultStopTimeout = 30
+)
 
 // UnmountIpcMount unmounts Ipc related mounts.
 // This is a NOOP on windows.

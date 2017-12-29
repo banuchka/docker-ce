@@ -2,14 +2,14 @@ package trust
 
 import (
 	"github.com/docker/cli/cli/trust"
-	"github.com/docker/notary/client"
-	"github.com/docker/notary/client/changelist"
-	"github.com/docker/notary/cryptoservice"
-	"github.com/docker/notary/passphrase"
-	"github.com/docker/notary/storage"
-	"github.com/docker/notary/trustmanager"
-	"github.com/docker/notary/tuf/data"
-	"github.com/docker/notary/tuf/signed"
+	"github.com/theupdateframework/notary/client"
+	"github.com/theupdateframework/notary/client/changelist"
+	"github.com/theupdateframework/notary/cryptoservice"
+	"github.com/theupdateframework/notary/passphrase"
+	"github.com/theupdateframework/notary/storage"
+	"github.com/theupdateframework/notary/trustmanager"
+	"github.com/theupdateframework/notary/tuf/data"
+	"github.com/theupdateframework/notary/tuf/signed"
 )
 
 // Sample mock CLI interfaces
@@ -192,7 +192,24 @@ func (e EmptyTargetsNotaryRepository) GetAllTargetMetadataByName(name string) ([
 }
 
 func (e EmptyTargetsNotaryRepository) ListRoles() ([]client.RoleWithSignatures, error) {
-	return []client.RoleWithSignatures{}, nil
+	rootRole := data.Role{
+		RootRole: data.RootRole{
+			KeyIDs:    []string{"rootID"},
+			Threshold: 1,
+		},
+		Name: data.CanonicalRootRole,
+	}
+
+	targetsRole := data.Role{
+		RootRole: data.RootRole{
+			KeyIDs:    []string{"targetsID"},
+			Threshold: 1,
+		},
+		Name: data.CanonicalTargetsRole,
+	}
+	return []client.RoleWithSignatures{
+		{Role: rootRole},
+		{Role: targetsRole}}, nil
 }
 
 func (e EmptyTargetsNotaryRepository) GetDelegationRoles() ([]data.Role, error) {
@@ -316,7 +333,39 @@ func (l LoadedNotaryRepository) ListRoles() ([]client.RoleWithSignatures, error)
 		Name: data.CanonicalTargetsRole,
 	}
 
-	return []client.RoleWithSignatures{{Role: rootRole}, {Role: targetsRole}}, nil
+	aliceRole := data.Role{
+		RootRole: data.RootRole{
+			KeyIDs:    []string{"A"},
+			Threshold: 1,
+		},
+		Name: data.RoleName("targets/alice"),
+	}
+
+	bobRole := data.Role{
+		RootRole: data.RootRole{
+			KeyIDs:    []string{"B"},
+			Threshold: 1,
+		},
+		Name: data.RoleName("targets/bob"),
+	}
+
+	releasesRole := data.Role{
+		RootRole: data.RootRole{
+			KeyIDs:    []string{"A", "B"},
+			Threshold: 1,
+		},
+		Name: data.RoleName("targets/releases"),
+	}
+	// have releases only signed off by Alice last
+	releasesSig := []data.Signature{{KeyID: "A"}}
+
+	return []client.RoleWithSignatures{
+		{Role: rootRole},
+		{Role: targetsRole},
+		{Role: aliceRole},
+		{Role: bobRole},
+		{Role: releasesRole, Signatures: releasesSig},
+	}, nil
 }
 
 func (l LoadedNotaryRepository) ListTargets(roles ...data.RoleName) ([]*client.TargetWithRole, error) {
