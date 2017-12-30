@@ -75,7 +75,7 @@ make VERSION=%{_origversion} GITCOMMIT=%{_gitcommit} dynbinary manpages # cli
 popd
 pushd engine
 TMP_GOPATH="/go" hack/dockerfile/install-binaries.sh runc-dynamic containerd-dynamic proxy-dynamic tini
-hack/make.sh dynbinary
+VERSION=%{_origversion} hack/make.sh dynbinary
 popd
 
 %check

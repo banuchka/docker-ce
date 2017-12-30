@@ -65,7 +65,7 @@ DEFAULT_BUNDLES=(
 	cross
 )
 
-VERSION="17.12.0-ce"
+VERSION=${VERSION:-dev}
 ! BUILDTIME=$(date -u -d "@${SOURCE_DATE_EPOCH:-$(date +%s)}" --rfc-3339 ns 2> /dev/null | sed -e 's/ /T/')
 if [ "$DOCKER_GITCOMMIT" ]; then
 	GITCOMMIT="$DOCKER_GITCOMMIT"

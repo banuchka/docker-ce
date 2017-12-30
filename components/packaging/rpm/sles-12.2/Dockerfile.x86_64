@@ -6,8 +6,8 @@ RUN mkdir -p /root/rpmbuild/{BUILD,RPMS,SOURCES,SPECS,SRPMS}
 RUN echo '%_topdir /root/rpmbuild' > /root/.rpmmacros
 
 ENV GO_VERSION 1.9.2
-ENV DISTRO centos
-ENV SUITE 7
+ENV DISTRO sles
+ENV SUITE 12.2
 RUN curl -fSL "https://golang.org/dl/go${GO_VERSION}.linux-amd64.tar.gz" | tar xzC /usr/local
 RUN mkdir -p /go
 ENV GOPATH=/go
