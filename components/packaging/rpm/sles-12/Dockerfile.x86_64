@@ -1,6 +1,4 @@
 FROM dockerio.badoo.com/itops/sle_12_base:latest
-RUN zypper ar --no-gpgcheck "http://obs.mlan/Security/SLE_12/" Security
-RUN echo "solver.allowVendorChange = true" >>  /etc/zypp/zypp.conf
 RUN zypper -n -q in -t pattern "Basis-Devel"
 RUN zypper -n -q in tar curl rpmbuild systemd-devel libtool git libseccomp-devel cmake glibc-devel-static device-mapper-devel libbtrfs-devel
 
@@ -9,7 +7,7 @@ RUN echo '%_topdir /root/rpmbuild' > /root/.rpmmacros
 
 ENV GO_VERSION 1.9.2
 ENV DISTRO sles
-ENV SUITE 12
+ENV SUITE 12.2
 RUN curl -fSL "https://golang.org/dl/go${GO_VERSION}.linux-amd64.tar.gz" | tar xzC /usr/local
 RUN mkdir -p /go
 ENV GOPATH=/go

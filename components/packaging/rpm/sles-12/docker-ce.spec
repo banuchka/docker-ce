@@ -75,18 +75,19 @@ make VERSION=%{_origversion} GITCOMMIT=%{_gitcommit} dynbinary manpages # cli
 popd
 pushd engine
 TMP_GOPATH="/go" hack/dockerfile/install-binaries.sh runc-dynamic containerd-dynamic proxy-dynamic tini
-hack/make.sh dynbinary
+VERSION=%{_origversion} hack/make.sh dynbinary
 popd
 
 %check
 cli/build/docker -v
-engine/bundles/%{_origversion}/dynbinary-daemon/dockerd -v
+engine/bundles/dynbinary-daemon/dockerd -v
 
 %install
 # install binary
 install -d $RPM_BUILD_ROOT/%{_bindir}
 install -p -m 755 cli/build/docker $RPM_BUILD_ROOT/%{_bindir}/docker
-install -p -m 755 engine/bundles/%{_origversion}/dynbinary-daemon/dockerd-%{_origversion} $RPM_BUILD_ROOT/%{_bindir}/dockerd
+install -p -m 755 $(readlink -f engine/bundles/dynbinary-daemon/dockerd) $RPM_BUILD_ROOT/%{_bindir}/dockerd
+#install -p -m 755 engine/bundles/%{_origversion}/dynbinary-daemon/dockerd-%{_origversion} $RPM_BUILD_ROOT/%{_bindir}/dockerd
 
 # install proxy
 install -p -m 755 /usr/local/bin/docker-proxy $RPM_BUILD_ROOT/%{_bindir}/docker-proxy
@@ -188,17 +189,9 @@ if [ -f /usr/bin/docker ] ; then
 fi
 
 %post
-#%systemd_post docker
 if ! getent group docker > /dev/null; then
     groupadd --system docker
 fi
-#%service_add_post docker.service
-
-#%preun
-#%systemd_preun docker
-
-#%postun
-#%systemd_postun_with_restart docker
 
 %posttrans
 if [ -f /usr/bin/docker ] ; then
@@ -212,21 +205,3 @@ if [ -f /usr/bin/docker ] ; then
 fi
 
 %changelog
-
-* Wed Jun 21 2017 <eli.uriegas@docker.com> 17.06.0-ce
-- release docker-ce 17.06.0-ce
-
-* Mon Jun 19 2017 <eli.uriegas@docker.com> 17.06.0-ce-rc5
-- release docker-ce 17.06.0-ce-rc5
-
-* Thu Jun 15 2017 <andrewhsu@docker.com> 17.06.0-ce-rc4
-- release docker-ce 17.06.0-ce-rc4
-
-* Tue Jun 13 2017 <andrewhsu@docker.com> 17.06.0-ce-rc3
-- release docker-ce 17.06.0-ce-rc3
-
-* Wed Jun 07 2017 <andrewhsu@docker.com> 17.06.0-ce-rc2
-- release docker-ce 17.06.0-ce-rc2
-
-* Mon May 29 2017 <andrewhsu@docker.com> 17.06.0-ce-rc1
-- release docker-ce 17.06.0-ce-rc1
