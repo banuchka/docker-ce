@@ -5,18 +5,23 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"path/filepath"
 	"runtime"
 	"time"
 
 	"github.com/docker/cli/cli"
+	"github.com/docker/cli/cli/config"
 	cliconfig "github.com/docker/cli/cli/config"
 	"github.com/docker/cli/cli/config/configfile"
 	cliflags "github.com/docker/cli/cli/flags"
+	manifeststore "github.com/docker/cli/cli/manifest/store"
+	registryclient "github.com/docker/cli/cli/registry/client"
 	"github.com/docker/cli/cli/trust"
 	dopts "github.com/docker/cli/opts"
 	"github.com/docker/docker/api"
+	"github.com/docker/docker/api/types"
+	registrytypes "github.com/docker/docker/api/types/registry"
 	"github.com/docker/docker/client"
-	"github.com/docker/go-connections/sockets"
 	"github.com/docker/go-connections/tlsconfig"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
@@ -44,18 +49,23 @@ type Cli interface {
 	ServerInfo() ServerInfo
 	ClientInfo() ClientInfo
 	NotaryClient(imgRefAndAuth trust.ImageRefAndAuth, actions []string) (notaryclient.Repository, error)
+	DefaultVersion() string
+	ManifestStore() manifeststore.Store
+	RegistryClient(bool) registryclient.RegistryClient
+	ContentTrustEnabled() bool
 }
 
 // DockerCli is an instance the docker command line client.
 // Instances of the client can be returned from NewDockerCli.
 type DockerCli struct {
-	configFile *configfile.ConfigFile
-	in         *InStream
-	out        *OutStream
-	err        io.Writer
-	client     client.APIClient
-	serverInfo ServerInfo
-	clientInfo ClientInfo
+	configFile   *configfile.ConfigFile
+	in           *InStream
+	out          *OutStream
+	err          io.Writer
+	client       client.APIClient
+	serverInfo   ServerInfo
+	clientInfo   ClientInfo
+	contentTrust bool
 }
 
 // DefaultVersion returns api.defaultVersion or DOCKER_API_VERSION if specified.
@@ -113,6 +123,27 @@ func (cli *DockerCli) ClientInfo() ClientInfo {
 	return cli.clientInfo
 }
 
+// ContentTrustEnabled returns whether content trust has been enabled by an
+// environment variable.
+func (cli *DockerCli) ContentTrustEnabled() bool {
+	return cli.contentTrust
+}
+
+// ManifestStore returns a store for local manifests
+func (cli *DockerCli) ManifestStore() manifeststore.Store {
+	// TODO: support override default location from config file
+	return manifeststore.NewStore(filepath.Join(config.Dir(), "manifests"))
+}
+
+// RegistryClient returns a client for communicating with a Docker distribution
+// registry
+func (cli *DockerCli) RegistryClient(allowInsecure bool) registryclient.RegistryClient {
+	resolver := func(ctx context.Context, index *registrytypes.IndexInfo) types.AuthConfig {
+		return ResolveAuthConfig(ctx, cli, index)
+	}
+	return registryclient.NewRegistryClient(resolver, UserAgent(), allowInsecure)
+}
+
 // Initialize the dockerCli runs initialization that must happen after command
 // line flags are parsed.
 func (cli *DockerCli) Initialize(opts *cliflags.ClientOptions) error {
@@ -135,9 +166,11 @@ func (cli *DockerCli) Initialize(opts *cliflags.ClientOptions) error {
 	if err != nil {
 		return errors.Wrap(err, "Experimental field")
 	}
+	orchestrator := GetOrchestrator(hasExperimental, opts.Common.Orchestrator, cli.configFile.Orchestrator)
 	cli.clientInfo = ClientInfo{
 		DefaultVersion:  cli.client.ClientVersion(),
 		HasExperimental: hasExperimental,
+		Orchestrator:    orchestrator,
 	}
 	cli.initializeFromClient()
 	return nil
@@ -203,11 +236,17 @@ type ServerInfo struct {
 type ClientInfo struct {
 	HasExperimental bool
 	DefaultVersion  string
+	Orchestrator    Orchestrator
+}
+
+// HasKubernetes checks if kubernetes orchestrator is enabled
+func (c ClientInfo) HasKubernetes() bool {
+	return c.HasExperimental && c.Orchestrator == OrchestratorKubernetes
 }
 
 // NewDockerCli returns a DockerCli instance with IO output and error streams set by in, out and err.
-func NewDockerCli(in io.ReadCloser, out, err io.Writer) *DockerCli {
-	return &DockerCli{in: NewInStream(in), out: NewOutStream(out), err: err}
+func NewDockerCli(in io.ReadCloser, out, err io.Writer, isTrusted bool) *DockerCli {
+	return &DockerCli{in: NewInStream(in), out: NewOutStream(out), err: err, contentTrust: isTrusted}
 }
 
 // NewAPIClientFromFlags creates a new APIClient from command line flags
@@ -228,12 +267,12 @@ func NewAPIClientFromFlags(opts *cliflags.CommonOptions, configFile *configfile.
 		verStr = tmpStr
 	}
 
-	httpClient, err := newHTTPClient(host, opts.TLSOptions)
-	if err != nil {
-		return &client.Client{}, err
-	}
-
-	return client.NewClient(host, verStr, httpClient, customHeaders)
+	return client.NewClientWithOpts(
+		withHTTPClient(opts.TLSOptions),
+		client.WithHTTPHeaders(customHeaders),
+		client.WithVersion(verStr),
+		client.WithHost(host),
+	)
 }
 
 func getServerHost(hosts []string, tlsOptions *tlsconfig.Options) (string, error) {
@@ -250,35 +289,32 @@ func getServerHost(hosts []string, tlsOptions *tlsconfig.Options) (string, error
 	return dopts.ParseHost(tlsOptions != nil, host)
 }
 
-func newHTTPClient(host string, tlsOptions *tlsconfig.Options) (*http.Client, error) {
-	if tlsOptions == nil {
-		// let the api client configure the default transport.
-		return nil, nil
-	}
-	opts := *tlsOptions
-	opts.ExclusiveRootPools = true
-	config, err := tlsconfig.Client(opts)
-	if err != nil {
-		return nil, err
-	}
-	tr := &http.Transport{
-		TLSClientConfig: config,
-		DialContext: (&net.Dialer{
-			KeepAlive: 30 * time.Second,
-			Timeout:   30 * time.Second,
-		}).DialContext,
-	}
-	proto, addr, _, err := client.ParseHost(host)
-	if err != nil {
-		return nil, err
-	}
+func withHTTPClient(tlsOpts *tlsconfig.Options) func(*client.Client) error {
+	return func(c *client.Client) error {
+		if tlsOpts == nil {
+			// Use the default HTTPClient
+			return nil
+		}
 
-	sockets.ConfigureTransport(tr, proto, addr)
+		opts := *tlsOpts
+		opts.ExclusiveRootPools = true
+		tlsConfig, err := tlsconfig.Client(opts)
+		if err != nil {
+			return err
+		}
 
-	return &http.Client{
-		Transport:     tr,
-		CheckRedirect: client.CheckRedirect,
-	}, nil
+		httpClient := &http.Client{
+			Transport: &http.Transport{
+				TLSClientConfig: tlsConfig,
+				DialContext: (&net.Dialer{
+					KeepAlive: 30 * time.Second,
+					Timeout:   30 * time.Second,
+				}).DialContext,
+			},
+			CheckRedirect: client.CheckRedirect,
+		}
+		return client.WithHTTPClient(httpClient)(c)
+	}
 }
 
 // UserAgent returns the user agent string used for making API requests

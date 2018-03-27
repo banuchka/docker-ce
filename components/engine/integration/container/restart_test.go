@@ -1,4 +1,4 @@
-package container
+package container // import "github.com/docker/docker/integration/container"
 
 import (
 	"context"
@@ -9,9 +9,11 @@ import (
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/integration-cli/daemon"
+	"github.com/gotestyourself/gotestyourself/skip"
 )
 
 func TestDaemonRestartKillContainers(t *testing.T) {
+	skip.If(t, testEnv.IsRemoteDaemon(), "cannot start daemon on remote test run")
 	type testCase struct {
 		desc       string
 		config     *container.Config
@@ -59,9 +61,9 @@ func TestDaemonRestartKillContainers(t *testing.T) {
 						t.Fatal(err)
 					}
 
-					var args []string
+					args := []string{"--iptables=false"}
 					if liveRestoreEnabled {
-						args = []string{"--live-restore"}
+						args = append(args, "--live-restore")
 					}
 
 					d.StartWithBusybox(t, args...)

@@ -1,4 +1,4 @@
-package containerd
+package containerd // import "github.com/docker/docker/plugin/executor/containerd"
 
 import (
 	"context"
@@ -8,7 +8,7 @@ import (
 
 	"github.com/containerd/containerd/cio"
 	"github.com/containerd/containerd/linux/runctypes"
-	"github.com/docker/docker/api/errdefs"
+	"github.com/docker/docker/errdefs"
 	"github.com/docker/docker/libcontainerd"
 	"github.com/opencontainers/runtime-spec/specs-go"
 	"github.com/pkg/errors"
@@ -122,7 +122,7 @@ func (c *rio) Wait() {
 }
 
 func attachStreamsFunc(stdout, stderr io.WriteCloser) libcontainerd.StdioCallback {
-	return func(iop *libcontainerd.IOPipe) (cio.IO, error) {
+	return func(iop *cio.DirectIO) (cio.IO, error) {
 		if iop.Stdin != nil {
 			iop.Stdin.Close()
 			// closing stdin shouldn't be needed here, it should never be open
