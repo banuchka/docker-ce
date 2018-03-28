@@ -57,6 +57,12 @@ centos-7: rpmbuild/SOURCES/engine.tgz rpmbuild/SOURCES/cli.tgz ## build centos-7
 	$(RPMBUILD) rpmbuild-$@/$(ARCH) $(RPMBUILD_FLAGS)
 	$(CHOWN) -R $(shell id -u):$(shell id -g) rpmbuild
 
+.PHONY: sles-12.2
+sles-12.2: rpmbuild/SOURCES/engine.tgz rpmbuild/SOURCES/cli.tgz ## build sles-12.2 rpm packages
+	docker build -t rpmbuild-$@/$(ARCH) -f $@/Dockerfile.$(ARCH) $@
+	$(RPMBUILD) rpmbuild-$@/$(ARCH) $(RPMBUILD_FLAGS)
+	$(CHOWN) -R $(shell id -u):$(shell id -g) rpmbuild
+
 rpmbuild/SOURCES/cli.tgz:
 	mkdir -p rpmbuild/SOURCES
 	docker run --rm -i -w /v \
