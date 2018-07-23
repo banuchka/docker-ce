@@ -36,7 +36,10 @@ rpm: fedora centos ## build all rpm packages
 fedora: fedora-28 fedora-27 fedora-26 ## build all fedora rpm packages
 
 .PHONY: centos
-centos: centos-7 ## build all centos rpm packages
+centos: sles-12.3 ## build all centos rpm packages
+
+.PHONY: sles
+centos: sles-12.3
 
 .PHONY: fedora-28
 fedora-28: rpmbuild/SOURCES/engine.tgz rpmbuild/SOURCES/cli.tgz ## build fedora-28 rpm packages
@@ -52,6 +55,12 @@ fedora-27: rpmbuild/SOURCES/engine.tgz rpmbuild/SOURCES/cli.tgz ## build fedora-
 
 .PHONY: centos-7
 centos-7: rpmbuild/SOURCES/engine.tgz rpmbuild/SOURCES/cli.tgz ## build centos-7 rpm packages
+	docker build --build-arg GO_VERSION=$(GO_VERSION) -t rpmbuild-$@/$(ARCH) -f $@/Dockerfile.$(ARCH) $@
+	$(RPMBUILD) rpmbuild-$@/$(ARCH) $(RPMBUILD_FLAGS)
+	$(CHOWN) -R $(shell id -u):$(shell id -g) rpmbuild
+
+.PHONY: sles-12.3
+sles-12.3: rpmbuild/SOURCES/engine.tgz rpmbuild/SOURCES/cli.tgz ## build sles-12.3 rpm packages
 	docker build --build-arg GO_VERSION=$(GO_VERSION) -t rpmbuild-$@/$(ARCH) -f $@/Dockerfile.$(ARCH) $@
 	$(RPMBUILD) rpmbuild-$@/$(ARCH) $(RPMBUILD_FLAGS)
 	$(CHOWN) -R $(shell id -u):$(shell id -g) rpmbuild
